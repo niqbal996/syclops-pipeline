@@ -1,0 +1,5 @@
+*
+!external/syclops
+!container/install_syclops.sh
+external/syclops/.git
+external/syclops/docs

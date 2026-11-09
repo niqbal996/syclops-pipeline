@@ -1,0 +1,3 @@
+[submodule "external/syclops"]
+	path = external/syclops
+	url = https://github.com/DFKI-NI/syclops.git

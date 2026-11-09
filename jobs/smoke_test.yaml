@@ -1,0 +1,103 @@
+# Smoke test: only uses the "Example Assets" library shipped with syclops, so it
+# runs without any external asset library. Same output types as sugarbeet_syn_v6.
+#   scripts/docker_run.sh scripts/render_dataset.sh jobs/smoke_test.yaml output/smoke 2 0
+steps: 4
+seeds:
+  numpy: 42
+  cycles: 42
+render_device: GPU
+render_hardware: OPTIX        # CUDA works too; OPTIX is faster on RTX cards
+denoising_enabled: true
+denoising_algorithm: OPTIX
+
+textures:
+  weed_density:
+    config:
+      image_size: [256, 256]
+      bit_depth: 16
+      seed: 7
+      num_textures: 2
+    ops:
+    - perlin:
+        octaves: 4
+    - math_expression: (x-0.4)*3
+    - clip: [0, 1]
+
+transformations:
+  map:
+    location: [0, 0, 0]
+    rotation: [0, 0, 0]
+    children:
+      camera_link:
+        location:
+          uniform: [[-3, -3, 3], [3, 3, 5]]
+        rotation:
+          uniform: [[-0.05, -0.05, -0.2], [0.05, 0.05, 0.2]]
+
+scene:
+  syclops_plugin_ground:
+  - name: Ground
+    size: 20
+    texture: Example Assets/Muddy Dry Ground
+    class_id: 0
+  syclops_plugin_environment:
+  - type: hdri
+    environment_image:
+      random_selection: [Example Assets/Sunflower Field]
+  syclops_plugin_crop:
+  - name: Corn
+    models: [Example Assets/Corn]
+    floor_object: Ground
+    crop_angle: 0
+    row_distance: 0.75
+    row_standard_deviation: 0.05
+    plant_distance: 0.25
+    plant_standard_deviation: 0.05
+    scale_standard_deviation: 0.3
+    class_id: 1
+  syclops_plugin_scatter:
+  - name: Weeds
+    models: [Example Assets/Plain Weeds]
+    floor_object: Ground
+    max_texture_size: 512
+    density_max:
+      uniform: [5, 20]
+    distance_min: 0.02
+    scale_standard_deviation: 0.5
+    class_id: 2
+    seed:
+      uniform: [0, 1000]
+    density_map: Preprocessed Assets/weed_density
+
+sensor:
+  syclops_sensor_camera:
+  - name: main_camera
+    frame_id: camera_link
+    resolution: [512, 512]
+    focal_length: 35
+    shutter_speed: 0.02
+    sensor_width: 35
+    exposure:
+      uniform: [-0.5, 0.5]
+    gamma: 1.0
+    depth_of_field:
+      aperture: 11
+      autofocus: true
+    outputs:
+      syclops_output_rgb:
+      - samples: 32
+        id: main_cam_rgb
+      syclops_output_pixel_annotation:
+      - semantic_segmentation:
+          id: main_cam_semantic
+        instance_segmentation:
+          id: main_cam_instance
+        depth:
+          id: main_cam_depth
+
+postprocessing:
+  syclops_postprocessing_bounding_boxes:
+  - type: YOLO
+    classes_to_skip: [0]
+    id: yolo_bound_boxes
+    sources: [main_cam_instance, main_cam_semantic]

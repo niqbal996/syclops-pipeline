@@ -1,0 +1,251 @@
+# Original job config of sugarbeet_syn_v6 (rendered 2024-06-10..14 on a Windows machine,
+# 5000 frames, ~59 s/frame). Kept for reference: it depends on libraries that are not
+# (yet) in blender_assets: 'Polyhaven Textures', 'DFKI Dataset' and absolute Graswald paths.
+# Source: /mnt/e/datasets/sugarbeet_syn_v6/syclops_logs/config.yaml
+# GENERAL CONFIG
+steps: 5000
+seeds:
+  numpy: 2
+  cycles: 2
+render_device: GPU
+render_hardware: CUDA
+denoising_enabled: true
+denoising_algorithm: OPTIX
+
+textures:
+  weed_1:
+    config:
+      image_size: [1024, 1024]
+      bit_depth: 16
+      seed: 278
+      num_textures: 24
+    ops:
+    - perlin:
+        octaves: 8
+    - math_expression: (x-0.4)*3
+    - clip:
+      - 0
+      - 1
+  weed_2:
+    config:
+      image_size: [1024, 1024]
+      bit_depth: 16
+      seed: 279
+      num_textures: 24
+    ops:
+    - perlin:
+        octaves: 8
+    - math_expression: (x-0.4)*3
+    - clip:
+      - 0
+      - 1
+  weed_3:
+    config:
+      image_size: [1024, 1024]
+      bit_depth: 16
+      seed: 280
+      num_textures: 24
+    ops:
+    - perlin:
+        octaves: 8
+    - math_expression: (x-0.4)*3
+    - clip:
+      - 0
+      - 1
+
+# TRANSFORMATION CONFIG
+transformations:
+  map:
+    location: [0, 0, 0]
+    rotation: [0, 0, 0]
+    children:
+      vehicle_link:
+        location:
+          uniform: [[-4, -4, 0], [4, 4, 0]]
+        rotation:
+          uniform: [[-0.02, -0.02, -0.17], [0.02, 0.02, 0.17]]
+        children:
+          camera_link:
+            location:
+              uniform: [[0, 0, 5], [0, 0, 12]]
+            rotation:
+              uniform: [[0, 0, 0], [0, 0, 0]]
+
+
+# SCENE CONFIG
+scene:
+  syclops_plugin_ground:
+  - name: Ground
+    size: 30   # m
+    texture:
+      random_selection:
+      - Polyhaven Textures/aerial_mud_1
+      - Polyhaven Textures/aerial_beach_03
+      - Polyhaven Textures/brown_mud
+      - Polyhaven Textures/brown_mud_02
+      - Polyhaven Textures/red_mud_stones
+      - Polyhaven Textures/brown_mud_dry
+      - Polyhaven Textures/burned_ground_01
+      - Polyhaven Textures/dry_mud_field_001
+      - Polyhaven Textures/forrest_sand_01
+      - Polyhaven Textures/rock_ground
+      - Polyhaven Textures/rocks_ground_09
+    class_id: 0
+
+  syclops_plugin_environment:
+  - type: hdri
+    environment_image:
+      selection_asset:
+        library: Polyhaven HDRI
+        type: environment_texture
+
+  syclops_plugin_crop:
+  - name: Sugarbeets
+    models: [DFKI Dataset/Sugarbeet Medium, DFKI Dataset/Sugarbeet Small, DFKI Dataset/Sugarbeet
+        Large]
+    crop_angle: 0   # degrees; [-90, 90] possible
+    row_distance:
+      uniform: [1, 2.3]   # per m^2
+    row_standard_deviation: 0.5   # m
+    plant_distance:
+      uniform: [0.2, 1]   # per m^2
+    plant_standard_deviation: 0.6   # m
+    scale_standard_deviation: 1.0
+    floor_object: Ground
+      # density_map: Example Assets/Perlin Noise 1
+    class_id: 1
+
+
+  syclops_plugin_scatter:
+  - name: Small Weeds
+    models:
+    - C:/Users/aelmiger/Documents/Graswald/small_weeds/ArctiumLappa_Small.blend
+    - C:/Users/aelmiger/Documents/Graswald/small_weeds/CampanulaRapunculoides_Small.blend
+    - C:/Users/aelmiger/Documents/Graswald/small_weeds/LactucaVirosa_Small.blend
+    - C:/Users/aelmiger/Documents/Graswald/small_weeds/PlantagoLanceolata_Small.blend
+    - C:/Users/aelmiger/Documents/Graswald/small_weeds/PlantagoLanceolata_Small_2.blend
+    - C:/Users/aelmiger/Documents/Graswald/small_weeds/PlantagoLanceolata_Small_2.blend
+    - C:/Users/aelmiger/Documents/Graswald/small_weeds/PlantagoMajor_Small_2.blend
+    - C:/Users/aelmiger/Documents/Graswald/small_weeds/PulmonariaObscura_Small.blend
+    - C:/Users/aelmiger/Documents/Graswald/small_weeds/ViolaOdorata_Small.blend
+    max_texture_size: 512
+    floor_object: Ground
+    density_max:
+      uniform: [0, 30]   # per m^2
+    distance_min: 0.01   # m
+    scale_standard_deviation: 1
+    class_id: 2
+    seed:
+      uniform: [0, 1000]
+    density_map: Preprocessed Assets/weed_1
+
+    # - name: "Large Weeds"
+    #   models: [Graswald Assets/Dandelion Big, Graswald Assets/Ground Elder Big]
+    #   max_texture_size: 256
+    #   floor_object: Ground
+    #   density_max:
+    #     uniform: [0, 0.8] # per m^2
+    #   distance_min: 0.1 # m
+    #   scale_standard_deviation: 2
+    #   class_id: 2
+    #   seed:
+    #     uniform: [0, 1000]
+
+  - name: Gras
+    models:
+    - C:/Users/aelmiger/Documents/Graswald/gras/AspleniumRutaMuraria_Big.blend
+    - C:/Users/aelmiger/Documents/Graswald/gras/DigitariaSanguinalis_Small.blend
+    - C:/Users/aelmiger/Documents/Graswald/gras/PolygonumAviculare_Big.blend
+    - C:/Users/aelmiger/Documents/Graswald/gras/PotentillaAnglica_Big.blend
+    - C:/Users/aelmiger/Documents/Graswald/gras/TrisetumFlavescens_Small.blend
+    max_texture_size: 400
+    floor_object: Ground
+    density_max:
+      uniform: [0, 3]   # per m^2
+    distance_min: 0.2   # m
+    scale_standard_deviation: 2
+    class_id: 2
+    seed:
+      uniform: [0, 1000]
+    density_map: Preprocessed Assets/weed_3
+  - name: Misc
+    models:
+    - C:/Users/aelmiger/Documents/Graswald/debris/AcerPseudoplatanus_Leaves.blend
+    - C:/Users/aelmiger/Documents/Graswald/debris/Debris_BarkSmall.blend
+    - C:/Users/aelmiger/Documents/Graswald/debris/Debris_Miscellaneous.blend
+    - C:/Users/aelmiger/Documents/Graswald/debris/Debris_Sticks.blend
+    - C:/Users/aelmiger/Documents/Graswald/debris/Debris_BarkBig.blend
+    - C:/Users/aelmiger/Documents/Graswald/debris/WoodDead_Big.blend
+    density_max:
+      uniform: [0, 2]   # per m^2
+    max_texture_size: 512
+    decimate_mesh_factor: 0.2
+    distance_min: 0   # m
+    scale_standard_deviation: 2
+    class_id: 0
+    seed:
+      uniform: [0, 1000]
+    floor_object: Ground
+    density_map: Preprocessed Assets/weed_2
+
+    # - name: "Bigger Weeds"
+    #   models: DFKI Dataset/CurlyDock_d15
+    #   max_texture_size: 256
+    #   floor_object: Ground
+    #   density_max:
+    #     uniform: [0, 8] # per m^2
+    #   distance_min: 0.04 # m
+    #   scale_standard_deviation: 2
+    #   class_id: 2
+    #   seed:
+    #     uniform: [0, 1000]
+
+
+# SENSOR CONFIG
+sensor:
+  syclops_sensor_camera:
+  - name: main_camera
+    frame_id: camera_link
+    resolution: [1024, 1024]
+    focal_length: 65   # mm
+    shutter_speed: 0.02   # s Currently only affects motion blur
+    sensor_width: 35   # mm
+    depth_of_field:
+      aperture: 11   # f-number
+      autofocus: true
+        #focus_distance: 2 # m (disabled because of autofocus)
+    exposure:   # Exposure (stops) shift of camera
+      uniform: [-2, 2]
+    gamma:
+      uniform: [0.8, 1.2]
+
+    motion_blur:
+      enabled: true
+      rolling_shutter:   # Only top to bottom supported
+        enabled: true
+        duration: 0.03   # s (Scanline "exposure" time)
+    outputs:
+      syclops_output_rgb:
+      - samples: 256
+        id: main_cam_rgb
+        debug_breakpoint: true
+        # Base Plugins/ObjectPositions:
+        #   - id: main_cam_object_positions
+      syclops_output_pixel_annotation:
+      - semantic_segmentation:
+          id: main_cam_semantic
+        instance_segmentation:
+          id: main_cam_instance
+        depth:
+          id: main_cam_depth
+        # syclops_output_keypoints:
+        #   - id: main_cam_keypoints
+
+
+
+postprocessing:
+  syclops_postprocessing_bounding_boxes:
+  - type: YOLO
+    classes_to_skip: [0]
+    id: yolo_bound_boxes
+    sources: [main_cam_instance, main_cam_semantic]
