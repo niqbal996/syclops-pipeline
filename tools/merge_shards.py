@@ -12,6 +12,7 @@ Every file whose name is a frame number (0000.png, 0012.npz, 0003.txt, ...) is
 renumbered to frame_offset + local frame and placed under the same relative path.
 metadata.yaml files get their `steps` merged. Logs and per-shard configs go to
 MERGED_DIR/_shards/. index.csv maps global frame -> shard/local frame/seed.
+Datumaro exports (<camera>_datumaro/) are rebuilt from the renumbered per-frame items.
 If a shard was rendered several times (resubmitted), the newest complete run wins.
 """
 from __future__ import annotations
@@ -158,6 +159,15 @@ def main() -> int:
         w.writerows(index_rows)
     if len(class_maps) > 1:
         print("WARNING: class_id_mapping.yaml differs between shards!", file=sys.stderr)
+    for items in sorted(out.glob("*_datumaro/items")):
+        # per-frame Datumaro fragments were renumbered above; rebuild the dataset json
+        try:
+            from syclops_to_datumaro import convert
+            camera = items.parent.name[: -len("_datumaro")]
+            print(f"rebuilt {convert(out, out=items.parent, camera=camera)}")
+        except ImportError as e:  # numpy missing
+            print(f"WARNING: could not rebuild {items.parent} ({e}); run tools/syclops_to_datumaro.py",
+                  file=sys.stderr)
     print(f"merged {len(index_rows)}/{total} frames from {len(shard_dirs)} shards into {out}")
     return 0
 

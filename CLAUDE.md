@@ -48,6 +48,10 @@ verified against Syclops commit `a64c5f7` (v1.4.4), pinned as submodule `externa
   (`ruamel_yaml_clib-0.2.15`), so plugin loading fails inside Blender. Pinned `ruamel.yaml.clib==0.2.8`;
   the install script checks `pkg_resources.require('syclops')` with Blender's Python.
 - Rich output from syclops ends without newline; status lines are prefixed with a blank line.
+- `jobs/sugarbeet_v6_local.yaml` (v6 settings, substituted assets, see header) rendered 1 frame at 1024px/256spp on the
+  2080 (CUDA + OIDN): ~3 min preprocessing (72 perlin density maps at 1024px, per shard!), ~21 s scene load,
+  ~53 s RGB, ~25 s annotations; 300 s total. Outputs verified (sem classes 0/1/2, instance ids, depth 6.3-7.1 m,
+  YOLO boxes match masks). **Blender-4.2-saved sugarbeet/LalWeco .blend files load and render fine in 3.6.**
 
 ## NOT yet verified on the cluster
 - `build_cluster_image.sh` end to end (needs internet on the compute node and apt as remapped root).
@@ -90,7 +94,8 @@ verified against Syclops commit `a64c5f7` (v1.4.4), pinned as submodule `externa
 ## Assets: state as of 2026-11-09
 - Local root `/mnt/d/blender_assets` (user is still copying the full set + new assets from a network drive):
   `LalWeco` (7 models + 1 PBR soil), `NL_Assets` (lib name "NV Labs Assets", 4 debris models),
-  `Polyhaven HDRI` (manifest lists 413, download in progress), `sugarbeets/` (3 .blend, **no manifest**).
+  `Polyhaven HDRI` (manifest lists 413, download in progress), `sugarbeets/` (3 .blend; manifest now in `asset_manifests/sugarbeets/assets.yaml`, copied there, lib "DFKI Dataset"),
+  `Polyhaven Textures` (86 listed, partly copied; 6 of the 11 v6 ground textures usable on 2026-11-09).
 - inspect_blend: **LalWeco and sugarbeets .blend files were saved with Blender 4.2** (render with 3.6 is
   untested: re-save from 3.6 or test). NL_Assets saved with 3.2 (fine; pine_needles has sub-mm pieces).
 - **The sugarbeet .blend files differ from those used for v6** (md5 mismatch vs the v6 catalog) and are much
@@ -108,13 +113,38 @@ verified against Syclops commit `a64c5f7` (v1.4.4), pinned as submodule `externa
 - Cluster: Slurm + pyxis/enroot; images `.sqsh` in `/netscratch/naeem/`; assets `/netscratch/naeem/blender_assets`;
   repo `/home/iqbal/syclops-pipeline`. GPUs: RTXA6000, RTX3090, A100, H100, ...
 
+## Syclops patches (branch `fix/plant-collisions-instance-ids`, fork git@github.com:niqbal996/syclops.git)
+- **Crop `collision_avoidance`** (`utility/collision_utils.py`, `plugins/crop.py`): reads the crop geo-node instance
+  poses back from the depsgraph, accepts plants largest first, retries colliding ones (yaw, shift <=3 cm, scale down to
+  0.7), drops the rest; collision test = BVH overlap of decimated (2000 faces) proxies thickened by `clearance`.
+  Plants become linked duplicates **with modifiers cleared** (with the per-object Volume_Attribute modifier every copy
+  is a full mesh: 36 GB OOM). Resolver RNG is seeded from job seed+frame+name (global numpy stream untouched, so other
+  plugins sample identically). Proxy build ~80 s per shard for the 3 sugarbeet files; resolve ~27 s for ~1100 plants.
+  Verified: dense patch 25 intersecting plant pairs -> 0 (full-res check); v6 field: 365/1089 candidates collided.
+- Intra-plant leaf crossings exist in the assets (large plants, outside the stem); they don't affect labels (one object).
+  Runtime leaf layering was tried and made things worse (pushes leaves into third leaves): fix the assets instead.
+- **Instance ids**: AOV = (OBJECT `syclops_object_id`, INSTANCER `syclops_instance_index` (Store Named Attribute added to
+  every geo-node tree), INSTANCER `syclops_object_id`), exact in float32; remapped per image to 0 (none), 1..N,
+  smallest uint dtype. Semantic -> uint8. `instance_segmentation.id_mode: location_hash` keeps the old int64 hashes
+  (object_positions/keypoints still use them).
+- **Datumaro**: postprocessor `syclops_postprocessing_datumaro` -> `<run>/<cam>_datumaro/` (annotations/default.json,
+  images/default, items/NNNN.json). Core `postprocessing/datumaro_format.py` (numpy only, RLE == pycocotools);
+  `tools/syclops_to_datumaro.py` converts any run/merged dir (also old int64 datasets); merge_shards rebuilds it.
+  Validated with datumaro 1.13: import, masks == npz, full panoptic coverage, export to coco_instances/coco_panoptic.
+- `utility.decimate_mesh` skips meshes with <=3 faces: upstream logged an ERROR (NV Labs pine needles) and the CLI
+  then reported "Syclops Blender failed" and **terminated the postprocessor** (affected v6-style jobs).
+- `container/Dockerfile.patch`: reinstall only syclops on top of `syclops-pipeline:latest` (seconds).
+  `syclops-pipeline:upstream-a64c5f7` = unpatched image. Test job `jobs/test_plant_fixes.yaml`.
+- On /mnt/e (drvfs) from the container hardlinks and chmod fail -> copies use shutil.copyfile.
+
 ## Next steps
 1. When the asset copy finishes: `check_library.py`, `inspect_blend.py` on everything; add manifests
    (`make_manifest.py`) for libraries without one (sugarbeets/DFKI Dataset, new assets).
-2. Test that Blender-4.2-saved assets render correctly in 3.6 (short job), else re-save from 3.6.
+2. (done) 4.2-saved assets render in 3.6. LalWeco weeds are 1-5 cm, which is tiny at 5-12 m camera height.
 3. Write `jobs/sugarbeet_v7.yaml` from the v6 reference with available libraries.
 4. On the cluster: build the image, run the smoke test, then a real job.
 
 ## Conventions
 - Never write into asset folders on shared storage; tools that modify manifests keep `.bak` copies.
-- Patches to Syclops go into `external/syclops` (fork it first), then rebuild the images.
+- Patches to Syclops go into `external/syclops` (submodule = fork `niqbal996/syclops`, remote `origin`; DFKI-NI is
+  remote `upstream`), then rebuild the images (`container/Dockerfile.patch` locally).
