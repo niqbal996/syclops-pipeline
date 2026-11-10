@@ -136,6 +136,30 @@ verified against Syclops commit `a64c5f7` (v1.4.4), pinned as submodule `externa
 - `container/Dockerfile.patch`: reinstall only syclops on top of `syclops-pipeline:latest` (seconds).
   `syclops-pipeline:upstream-a64c5f7` = unpatched image. Test job `jobs/test_plant_fixes.yaml`.
 - On /mnt/e (drvfs) from the container hardlinks and chmod fail -> copies use shutil.copyfile.
+- **Leaf instances**: crop `leaf_instances: true` stores loose-part index+1 as mesh attribute `syclops_leaf_id` (each
+  sugarbeet leaf incl. petiole is one loose part, 2-13 per plant); pixel_annotation `leaf_instance_segmentation` AOV =
+  (object id, instance index, GEOMETRY leaf id). `overscan: 2` renders annotations with a border (sensor_width scaled,
+  same pixel size) -> `instance_visibility/`, `leaf_instance_visibility/` (0-255, truncation by the image border).
+- Datumaro: leaves as label `<leaf_label>` (= max class id + 1), group = plant id, attrs plant_id/visibility/partial.
+  `tools/syclops_to_phenobench.py`: PhenoBench layout (16-bit PNG; semantics 0-4 with partial = visibility < 0.5).
+- Ground plugin: `offscreen_dicing_scale` (+ `dicing_rate`). At 1 mm/px the default (4) diced the whole ground:
+  30-35 GB RAM, RGB 13.5 min -> with 64: 11 GB, 71 s.
+- `decimate_mesh` skips meshes with shape keys (Graswald debris: modifier_apply fails -> scene setup crashed).
+- Postprocessor/AtomicYAMLWriter lock timeouts 5/10 s -> 120 s (YOLO thread died on /mnt/e under memory pressure).
+- **Cross-class collision avoidance** (2026-11-10): `collision_utils.CollisionAvoidance` used by crop AND scatter
+  (`collision_avoidance` in both schemas). One `Occupancy` per frame shared by all plugins, resolved in job order
+  (crop first, then weeds/grass/debris fitted around it). Only candidates within `camera_regions` (half image
+  diagonal on the ground x `region_scale` 2.5 + `region_margin` 1 m) are tested; others kept unchanged
+  (`region: all` to test everything). v6 geometry frame: ~6 s for all plugins. Synthetic dense test (full-res
+  check): beet-beet 57->0, beet-weed 52->0, weed-weed 30->1 (proxy decimation).
+- Plant size: phenobench_like (1 mm/px) zooms 2.6-6.3x vs v6 (65 mm/35 mm sensor at 5-12 m); the sugarbeet models
+  have the same physical size as v6's (median ~0.35-0.45 m). `jobs/sugarbeet_v7.yaml` = v6 scene/camera + new labels
+  + collision avoidance on all plugins.
+- Fully occluded objects get no pixels -> no labels at all (AOV = first opaque hit, alpha binarised at 0.5); masks
+  are modal (visible part only); `visibility` attr = image-border truncation only, not occlusion.
+- `jobs/phenobench_like.yaml`: v6 + Graswald substitutes (v6 Graswald files are NOT in the local pack, mapping in the
+  header), PhenoBench optics (80 mm, ~21 m, sensor 3.85 mm -> 1 mm/px), sugar beet rows 0.45-0.5 m / 0.18-0.25 m,
+  ground 12 m. ~4 min/frame + ~8 min setup on the 2080 (collision avoidance ~100 s/frame at this density).
 
 ## Next steps
 1. When the asset copy finishes: `check_library.py`, `inspect_blend.py` on everything; add manifests

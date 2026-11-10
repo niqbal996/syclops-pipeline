@@ -9,7 +9,8 @@
   syclops_postprocessing_datumaro, renumbered by tools/merge_shards.py), only
   annotations/<subset>.json is rebuilt from it (fast).
 * Otherwise (or with --from-npz) annotations are computed from
-  <camera>_annotations/{semantic_segmentation,instance_segmentation}/NNNN.npz and
+  <camera>_annotations/{semantic_segmentation,instance_segmentation}/NNNN.npz (plus
+  leaf_instance_segmentation/ and *_visibility/ if present) and
   <camera>/rect/NNNN.png are hardlinked. This also converts old datasets whose
   instance ids are Syclops' int64 location hashes (e.g. sugarbeet_syn_v6); note that
   the hash collisions/splits of those ids cannot be undone by a conversion.
@@ -82,8 +83,9 @@ def convert(dataset: Path, out: Path | None = None, camera: str = "main_camera",
     out = out or dataset / f"{camera}_datumaro"
     subset = subset or options.get("subset", "default")
     labels = class_names(dataset, names, options)
+    leaf_label = options.get("leaf_label", "leaf")
     if not from_npz and (out / "items").is_dir() and any((out / "items").glob("*.json")):
-        return fmt.assemble(out, labels, subset=subset)
+        return fmt.assemble(out, labels, subset=subset, leaf_label=leaf_label)
 
     stuff = stuff if stuff is not None else options.get("stuff_classes", [])
     ignore = ignore if ignore is not None else options.get("ignore_classes", [])
@@ -95,6 +97,10 @@ def convert(dataset: Path, out: Path | None = None, camera: str = "main_camera",
     semantic = frames(sem_dir, "npz")
     instance = frames(ann / "instance_segmentation", "npz")
     images = frames(dataset / camera / "rect", "png")
+    leaves = frames(ann / "leaf_instance_segmentation", "npz")
+    inst_vis = frames(ann / "instance_visibility", "npz")
+    leaf_vis = frames(ann / "leaf_instance_visibility", "npz")
+    leaf_id = max(labels) + 1 if labels else 0
     todo = sorted(set(semantic) & set(instance))
     if not todo:
         raise SystemExit(f"no frames with both semantic and instance masks in {ann}")
@@ -104,12 +110,17 @@ def convert(dataset: Path, out: Path | None = None, camera: str = "main_camera",
         if inst.dtype.kind == "i" and inst.dtype.itemsize == 8:
             # legacy Syclops ids (int64 location hashes): remap to 1..N first
             inst = np.unique(inst, return_inverse=True)[1].reshape(inst.shape) + 1
+        load = lambda d: np.load(d[frame])["array"] if frame in d else None  # noqa: E731
+        leaf = load(leaves)
         anns = fmt.frame_annotations(sem, inst, stuff_classes=stuff, ignore_classes=ignore,
-                                     min_pixels=min_pixels)
+                                     min_pixels=min_pixels, leaf_instance=leaf,
+                                     leaf_label=leaf_id if leaf is not None else None,
+                                     instance_visibility=load(inst_vis), leaf_visibility=load(leaf_vis),
+                                     partial_threshold=float(options.get("partial_threshold", 0.5)))
         fmt.write_item(out, frame, anns, sem.shape[:2], images.get(frame), subset=subset)
         if (n + 1) % 100 == 0:
             print(f"  {n + 1}/{len(todo)} frames", flush=True)
-    return fmt.assemble(out, labels, subset=subset)
+    return fmt.assemble(out, labels, subset=subset, leaf_label=leaf_label)
 
 
 def main() -> int:
