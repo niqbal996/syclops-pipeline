@@ -1,0 +1,259 @@
+# sugarbeet_syn_v7: the sugarbeet_syn_v6 job (jobs/reference/sugarbeet_syn_v6.yaml) with the locally
+# available assets and the new labels. Scene, camera and plant layout are v6's, so plants have the
+# same size in the images as in v6 (65 mm lens, 35 mm sensor, 5-12 m height -> 2.6-6.3 mm/px).
+# (jobs/phenobench_like.yaml uses PhenoBench's 1 mm/px instead, i.e. 2.6-6.3x larger plants.)
+#
+# Cluster version: Graswald models referenced by file path under
+# /netscratch/naeem/blender_assets/rendering_assets (the Graswald manifest does not list all of them).
+# `steps` is the TOTAL frame count; slurm/submit.sh / shard_job.py split it across shards.
+#
+# Same as v6: all 11 Polyhaven ground textures, all Polyhaven HDRIs, DFKI sugarbeet models
+#   (NOTE: newer/heavier files than v6, same physical size), weed density maps, densities, scales,
+#   class ids (0 soil+debris, 1 sugarbeet, 2 weed), 256 spp, seeds, crop rows, ground size, camera.
+# Graswald: v6 used Graswald files that are not in the local Graswald pack -> closest species:
+#   Small Weeds  ArctiumLappa_Small -> CurlyDock_Small (large broad-leaf rosette)
+#                CampanulaRapunculoides_Small -> GroundElder_Small
+#                LactucaVirosa_Small -> AutumnHawkbit_Medium (lettuce-like rosette)
+#                PlantagoLanceolata_Small(+_2 x2) -> PlantainRibwort_Small (same species, x3 like v6)
+#                PlantagoMajor_Small_2 -> Dandelion_Small (flat broad-leaf rosette)
+#                PulmonariaObscura_Small -> StingingNettle_Small
+#                ViolaOdorata_Small -> CommonDaisy_Medium (small rosette)
+#   Gras         AspleniumRutaMuraria_Big -> WallBarley_Big, DigitariaSanguinalis_Small -> CreepingBentgrass_Small,
+#                PolygonumAviculare_Big -> RedClover_Small, PotentillaAnglica_Big -> PerennialRyegrass_Small,
+#                TrisetumFlavescens_Small -> OrchardGrass_Small
+#   Misc debris  AcerPseudoplatanus_Leaves -> MapleLeaves_Dead, Debris_BarkSmall -> WoodyDebris_Small,
+#                Debris_Miscellaneous -> VariousLeaves_Random, Debris_Sticks -> WoodyDebris_Stick,
+#                Debris_BarkBig -> WoodyDebris_Big, WoodDead_Big -> WoodyDebris_Big
+# New:
+#   collision_avoidance on the crop and on every scatter plugin: one occupancy per frame, resolved in job
+#           order (sugarbeets, then weeds, grass, debris), so no plant interpenetrates a plant of the
+#           same or another class; only the part of the field the camera can see is tested
+#   labels: leaf instances (sugarbeets), visibility (overscan 2), Datumaro export; PhenoBench layout via
+#           tools/syclops_to_phenobench.py
+#   ground: offscreen_dicing_scale 64 (less RAM, same look in view)
+steps: 5
+seeds:
+  numpy: 2
+  cycles: 2
+render_device: GPU
+render_hardware: OPTIX   # render_dataset.sh: GPU_BACKEND=CUDA locally (OptiX crashes on WSL)
+denoising_enabled: true
+denoising_algorithm: OPTIX
+
+textures:
+  weed_1:
+    config:
+      image_size: [1024, 1024]
+      bit_depth: 16
+      seed: 278
+      num_textures: 24
+    ops:
+    - perlin:
+        octaves: 8
+    - math_expression: (x-0.4)*3
+    - clip:
+      - 0
+      - 1
+  weed_2:
+    config:
+      image_size: [1024, 1024]
+      bit_depth: 16
+      seed: 279
+      num_textures: 24
+    ops:
+    - perlin:
+        octaves: 8
+    - math_expression: (x-0.4)*3
+    - clip:
+      - 0
+      - 1
+  weed_3:
+    config:
+      image_size: [1024, 1024]
+      bit_depth: 16
+      seed: 280
+      num_textures: 24
+    ops:
+    - perlin:
+        octaves: 8
+    - math_expression: (x-0.4)*3
+    - clip:
+      - 0
+      - 1
+
+# TRANSFORMATION CONFIG
+transformations:
+  map:
+    location: [0, 0, 0]
+    rotation: [0, 0, 0]
+    children:
+      vehicle_link:
+        location:
+          uniform: [[-4, -4, 0], [4, 4, 0]]
+        rotation:
+          uniform: [[-0.02, -0.02, -0.17], [0.02, 0.02, 0.17]]
+        children:
+          camera_link:
+            location:
+              uniform: [[0, 0, 5], [0, 0, 12]]
+            rotation:
+              uniform: [[0, 0, 0], [0, 0, 0]]
+
+# SCENE CONFIG
+scene:
+  syclops_plugin_ground:
+  - name: Ground
+    size: 30   # m
+    offscreen_dicing_scale: 64   # coarse displacement outside the view (default 4: much more RAM)
+    texture:
+      random_selection:
+      - Polyhaven Textures/aerial_mud_1
+      - Polyhaven Textures/aerial_beach_03
+      - Polyhaven Textures/brown_mud
+      - Polyhaven Textures/brown_mud_02
+      - Polyhaven Textures/red_mud_stones
+      - Polyhaven Textures/brown_mud_dry
+      - Polyhaven Textures/burned_ground_01
+      - Polyhaven Textures/dry_mud_field_001
+      - Polyhaven Textures/forrest_sand_01
+      - Polyhaven Textures/rock_ground
+      - Polyhaven Textures/rocks_ground_09
+    class_id: 0
+
+  syclops_plugin_environment:
+  - type: hdri
+    environment_image:
+      selection_asset:
+        library: Polyhaven HDRI
+        type: environment_texture
+
+  syclops_plugin_crop:
+  - name: Sugarbeets
+    models: [DFKI Dataset/Sugarbeet Medium, DFKI Dataset/Sugarbeet Small, DFKI Dataset/Sugarbeet Large]
+    crop_angle: 0   # degrees
+    row_distance:
+      uniform: [1, 2.3]   # as v6
+    row_standard_deviation: 0.5   # m
+    plant_distance:
+      uniform: [0.2, 1]   # as v6
+    plant_standard_deviation: 0.6   # m
+    scale_standard_deviation: 1.0
+    floor_object: Ground
+    class_id: 1
+    leaf_instances: true   # one id per leaf (loose mesh part)
+    collision_avoidance:
+      clearance: 0.005   # m
+      on_failure: drop
+
+  syclops_plugin_scatter:
+  - name: Small Weeds
+    models:
+    - /netscratch/naeem/blender_assets/rendering_assets/Graswald_Assets/models/CurlyDock_Small.blend
+    - /netscratch/naeem/blender_assets/rendering_assets/Graswald_Assets/models/GroundElder_Small.blend
+    - /netscratch/naeem/blender_assets/rendering_assets/Graswald_Assets/models/AutumnHawkbit_Medium.blend
+    - /netscratch/naeem/blender_assets/rendering_assets/Graswald_Assets/models/PlantainRibwort_Small.blend
+    - /netscratch/naeem/blender_assets/rendering_assets/Graswald_Assets/models/PlantainRibwort_Small.blend
+    - /netscratch/naeem/blender_assets/rendering_assets/Graswald_Assets/models/PlantainRibwort_Small.blend
+    - /netscratch/naeem/blender_assets/rendering_assets/Graswald_Assets/models/Dandelion_Small.blend
+    - /netscratch/naeem/blender_assets/rendering_assets/Graswald_Assets/models/StingingNettle_Small.blend
+    - /netscratch/naeem/blender_assets/rendering_assets/Graswald_Assets/models/CommonDaisy_Medium.blend
+    max_texture_size: 512
+    floor_object: Ground
+    density_max:
+      uniform: [0, 30]   # per m^2
+    distance_min: 0.01   # m
+    scale_standard_deviation: 1
+    collision_avoidance: true   # fitted around the sugarbeets and earlier plugins
+    class_id: 2
+    seed:
+      uniform: [0, 1000]
+    density_map: Preprocessed Assets/weed_1
+
+  - name: Gras
+    models:
+    - /netscratch/naeem/blender_assets/rendering_assets/Graswald_Assets/models/WallBarley_Big.blend
+    - /netscratch/naeem/blender_assets/rendering_assets/Graswald_Assets/models/CreepingBentgrass_Small.blend
+    - /netscratch/naeem/blender_assets/rendering_assets/Graswald_Assets/models/RedClover_Small.blend
+    - /netscratch/naeem/blender_assets/rendering_assets/Graswald_Assets/models/PerennialRyegrass_Small.blend
+    - /netscratch/naeem/blender_assets/rendering_assets/Graswald_Assets/models/OrchardGrass_Small.blend
+    max_texture_size: 400
+    floor_object: Ground
+    density_max:
+      uniform: [0, 3]   # per m^2
+    distance_min: 0.2   # m
+    scale_standard_deviation: 2
+    collision_avoidance: true   # fitted around the sugarbeets and earlier plugins
+    class_id: 2
+    seed:
+      uniform: [0, 1000]
+    density_map: Preprocessed Assets/weed_3
+
+  - name: Misc
+    models:
+    - /netscratch/naeem/blender_assets/rendering_assets/Graswald_Assets/models/MapleLeaves_Dead.blend
+    - /netscratch/naeem/blender_assets/rendering_assets/Graswald_Assets/models/WoodyDebris_Small.blend
+    - /netscratch/naeem/blender_assets/rendering_assets/Graswald_Assets/models/VariousLeaves_Random.blend
+    - /netscratch/naeem/blender_assets/rendering_assets/Graswald_Assets/models/WoodyDebris_Stick.blend
+    - /netscratch/naeem/blender_assets/rendering_assets/Graswald_Assets/models/WoodyDebris_Big.blend
+    - /netscratch/naeem/blender_assets/rendering_assets/Graswald_Assets/models/WoodyDebris_Big.blend
+    density_max:
+      uniform: [0, 2]   # per m^2
+    max_texture_size: 512
+    decimate_mesh_factor: 0.2
+    distance_min: 0   # m
+    scale_standard_deviation: 2
+    collision_avoidance: true   # fitted around the sugarbeets and earlier plugins
+    class_id: 0
+    seed:
+      uniform: [0, 1000]
+    floor_object: Ground
+    density_map: Preprocessed Assets/weed_2
+
+# SENSOR CONFIG
+sensor:
+  syclops_sensor_camera:
+  - name: main_camera
+    frame_id: camera_link
+    resolution: [1024, 1024]
+    focal_length: 65   # mm
+    sensor_width: 35   # mm
+    shutter_speed: 0.02   # s
+    depth_of_field:
+      aperture: 11
+      autofocus: true
+    exposure:
+      uniform: [-2, 2]
+    gamma:
+      uniform: [0.8, 1.2]
+    motion_blur:
+      enabled: true
+      rolling_shutter:
+        enabled: true
+        duration: 0.03
+    outputs:
+      syclops_output_rgb:
+      - samples: 256
+        id: main_cam_rgb
+      syclops_output_pixel_annotation:
+      - semantic_segmentation:
+          id: main_cam_semantic
+        instance_segmentation:
+          id: main_cam_instance
+        leaf_instance_segmentation:
+          id: main_cam_leaf
+        depth:
+          id: main_cam_depth
+        overscan: 2.0   # visibility of plants/leaves cut by the image border
+
+postprocessing:
+  syclops_postprocessing_bounding_boxes:
+  - type: YOLO
+    classes_to_skip: [0]
+    id: yolo_bound_boxes
+    sources: [main_cam_instance, main_cam_semantic]
+  syclops_postprocessing_datumaro:
+  - id: main_cam_datumaro
+    sources: [main_cam_instance, main_cam_semantic, main_cam_rgb, main_cam_leaf]
+    stuff_classes: [0]   # soil + debris: one mask, no instances
+    class_names: {0: soil, 1: sugarbeet, 2: weed}
+    leaf_label: sugarbeet_leaf
